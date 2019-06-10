@@ -292,6 +292,7 @@ printChar:
 
     int 0x10                  ; if not print al
     inc si                    ; increment si
+    
 
     jmp printChar       ;again untill stack empty
 ifZero:
@@ -408,7 +409,50 @@ enterPressed:
 ;if math typed
 returnEnter:
     ret
-typeMathKeyboard:
+printStringDouble:
+    push ax                   ; save ax to stack
+
+    mov ah, 0x0e              ; call tty function
+    call printCharDouble      
+
+    pop ax                    ; take ax out of the stack
+    ret                      
+printCharDouble:
+    mov al, [si + bp]              ; load symbol
+
+    cmp al, 0                 ; if si empty then jump
+    jz ifZero               
+
+    int 0x10                  ; if not print al
+    add bp,2                    ; increment si
+    
+    jmp printCharDouble       ;again untill stack empty
+printStringMath:
+    push ax                   ; save ax to stack
+
+    mov ah, 0x0e              ; call tty function
+    call printCharMath      
+
+    pop ax                    ; take ax out of the stack
+    ret                      
+printCharMath:
+    mov al, [si + bp]              ; load symbol
+    cmp al, 0                 ; if si empty then jump
+    jz ifZero               
+
+    int 0x10                  ; if not print al
+    sub bp,2                    ; increment si
+    
+    jmp printCharMath       ;again untill stack empty
+ifEqualTwo:
+    mov bp,0
+    call printStringDouble
+    jmp back0
+ifEqualFour:
+    mov bp,2
+    call printStringMath
+    jmp back1
+firstVariableKeyboard:
     mov ah,0x0
     int 16h
 
@@ -418,74 +462,141 @@ typeMathKeyboard:
     mov ah,0eh
     int 10h
 
-    mov [input + bx],al
-    inc bx
+    mov [var1 + bp],al
+    mov cx,[var1 + bp]
 
-    jmp typeMathKeyboard
-clearStack:
-    mov ecx,1000        ;1000 bytes
-    lea edx,[input]     ;point edx to the start of the block to be cleared.  
-    xor eax,eax          
-    loop:
-    mov [edx+(ecx-1)],eax  ;fill the buffer starting at the end.
-    dec ecx            ;decrease the counter also moving the destination.   
-    jnz loop           ;if ecx not zero repeat
-    ret 
+    mov word[var1 + bp],cx
+    add bp,2
+    mov cx,0
+
+    jmp firstVariableKeyboard
+secondVariableKeyboard:
+    mov ah,0x0
+    int 16h
+
+    cmp al,0x0d
+    je returnEnter
+
+    mov ah,0eh
+    int 10h
+
+    mov [var2 + bp],al
+    mov cx,[var2 + bp]
+
+    mov word[var2 + bp],cx
+    add bp,2
+    mov cx,0
+
+    jmp secondVariableKeyboard
 equalMath:
-    call clearStack
+    ;introduce first variable
     mov si,math_description0
     call printString
+
+    mov bp,0
+    call firstVariableKeyboard
+
+    ;test var 1
+    ; mov bp,0
+    ; mov si, var1
+    ; call printStringDouble
     
-    mov bx,0
-    call typeMathKeyboard
-    mov si,input
-    call printMath0
-
-
+    ;new line
     mov si,newLine
     call printString
 
+    ;introduce second variable
     mov si,math_description1
     call printString
-    inc bx
-    call typeMathKeyboard
 
+    mov bp,0
+    call secondVariableKeyboard
+
+    ;new line
     mov si,newLine
     call printString
-    mov si,input
-    mov cx, si
-    pop si
-    call printString
 
+    ;test var 2
+    ; mov bp,0
+    ; mov si,var2
+    ; call printStringDouble
+
+    ;the result
     mov si,math_description2
     call printString
-    mov si,input
-    add si,cx
+
+    ;conversion from ascii to decimal
+    sub word[var1],48
+    sub word[var2],48
+    ; sub word[var1 + 2],48
+    ; sub word[var2 + 2],48
+    ;adding
+    mov dx,0
+    mov cx,0
+    ; call twoDigitMath
+
+    mov dx,[var1]
+    add dx,[var2]
+    ;store variable in ax
+    mov ax,dx
+    mov bp,0
+    mov cx,0
+    ;call the function that makes from int ascii
+    call divMath
+    mov bx,0
+    ;print the result
+    mov si,result
+    call printStringDouble
+    ;compare to print 1 or 2 digit result
+    cmp cx,2
+    je ifEqualTwo
+    back0:
+    cmp cx,4
+    je ifEqualFour
+    back1:
+    mov bx,0
+    call clearBuffer
+
+    ;new line
+    mov si,newLine
     call printString
     
-
-
     jmp mainLoop
-printMath0:
-    push ax                   ; save ax to stack
+; twoDigitMath:
+;     mov dx,[var1]
+;     add dx,[var2]
+;     mov word[result],dx
+;     mov dx,[var1 + 2]
+;     add dx,[var2 + 2]
+;     mov word[result + 2],dx
+;     add [result],48
+;     add [result + 2],48
+divMath:
+    mov dx,0
+    mov bx,10
+    div bx
+    ;covert to ascii
+    add dx,48
+    ;push to buffer current number
+    mov word[result + bp],dx
+    ;increment
+    add bp,2
+    add cx,2
 
-    mov ah, 0x0e              ; call tty function
-    call printMath1     
+    ;if divider is 0 exit
+    cmp ax,0
+    jnz divMath
+    ret
+clearBuffer:
+    mov word[var1 + bx],0
+    mov word[var2 + bx],0
+    mov word[result + bx],0
+    add bx,2
+    cmp bx,6
+    jne clearBuffer
+    mov bx,0
+    ret
 
-    pop ax                    ; take ax out of the stack
-    ret                      
-printMath1:
-    mov al, [si]              ; load symbol
-
-    cmp al, 0                 ; if si empty then jump
-    jz ifZero               
-
-    add al,10
-
-    int 0x10                  ; if not print al
-    inc si                    ; increment si
-
-    jmp printMath1      ;again untill stack empty
 ;if restart typed
 equalRestart:
     mov si, restart_description
@@ -494,10 +605,12 @@ equalRestart:
     mov ah,00h
     int 16h
     cmp ah,21
-    je 0x7C00
+    je restartJump
     cmp ah,49
     je mainLoop
     jmp waitRestartKeyboard
+restartJump:
+    int 19h
 ;if ghost typed
 equalGhost:
     mov si, ghost_description0
@@ -630,493 +743,493 @@ backspacePressed:
     jmp inputFieldButtons   
 ;draw command    
 draw:
-    ;set video mode to 640x200
-    mov ah,00h
-    mov al,0eh
-    int 10h
-    ;print a pixel
-    jmp printpixel
-downObject:
-    mov ah,0ch
-    int 10h
-    inc cx
-    inc dx
-    cmp dx, 120
-    jne downObject
-    ret
-rightObject:
-    mov ah,0ch
-    int 10h
-    inc cx
-    cmp cx, 320
-    jne rightObject
-    ret
-upObject:
-    mov ah,0ch
-    int 10h
-    dec dx
-    inc cx
-    cmp dx, 40
-    jne upObject
-    ret
-leftBitObject:
-    mov ah,0ch
-    int 10h
-    dec cx
-    cmp cx, 370
-    jne leftBitObject
-    ret
-downBitObject:
-    mov ah,0ch
-    int 10h
-    inc dx
-    dec cx
-    cmp dx, 100
-    jne downBitObject
-    ret
-leftleftBitObject:
-    mov ah,0ch
-    int 10h
-    dec cx
-    cmp cx, 290
-    jne leftleftBitObject
-    ret
-upBitObject:
-    mov ah,0ch
-    int 10h
-    dec dx
-    dec cx
-    cmp dx, 40
-    jne upBitObject
-    ret
-leftLeftLeftBitObject:
-    mov ah,0ch
-    int 10h
-    dec cx
-    cmp cx, 200
-    jne leftLeftLeftBitObject
-    ret
-logoSquareDown:
-    mov ah,0ch
-    int 10h
-    inc dx
-    cmp dx, 130
-    jne logoSquareDown
-    ret
-logoSquareRight:
-    mov ah,0ch
-    int 10h
-    inc cx
-    cmp cx, 410
-    jne logoSquareRight
-    ret
-logoSquareUp:
-    mov ah,0ch
-    int 10h
-    dec dx
-    cmp dx, 30
-    jne logoSquareUp
-    ret
-logoSquareLeft:
-    mov ah,0ch
-    int 10h
-    dec cx
-    cmp cx, 190
-    jne logoSquareLeft
-    ret
-clearScreen:
-    mov ah,00h
-    mov al,0eh
-    int 10h
-    jmp continue
-triangleDown:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    inc dx
-    ;cmp cx,540
-    cmp dx,140
-    jne triangleDown
-    ret
-triangleLeft:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec cx
-    cmp cx,460
-    jne triangleLeft
-    ret
-triangleUp:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    dec dx
-    cmp dx,100
-    jne triangleUp
-    ret
-headRight:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    cmp cx,520
-    jne headRight
-    ret
-headUp:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec dx
-    cmp dx,80
-    jne headUp
-    ret
-headLeft:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec cx
-    cmp cx,480
-    jne headLeft
-    ret
-headDown:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc dx
-    cmp dx,100
-    jne headDown
-    ret
-eyeUp1:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec dx
-    cmp dx,85
-    jne eyeUp1
-    ret
-eyeRight1:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    cmp cx,495
-    jne eyeRight1
-    ret
-eyeDown1:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc dx
-    cmp dx,90
-    jne eyeDown1
-    ret
-eyeLeft1:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec cx
-    cmp cx,490
-    jne eyeLeft1
-    ret
-eyeRight2:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    cmp cx,510
-    jne eyeRight2
-    ret
-eyeLeft2:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec cx
-    cmp cx,505
-    jne eyeLeft2
-    ret
-footDown:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc dx
-    cmp dx,150
-    jne footDown
-    ret
-footRight1:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    cmp cx,490
-    jne footRight1
-    ret
-footRight2:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    cmp cx,530
-    jne footRight2
-    ret
-footUp:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec dx
-    cmp dx,140
-    jne footUp
-    ret
-handDown:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc dx
-    cmp dx,115
-    jne handDown
-    ret
-handRight1:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    cmp cx,535
-    jne handRight1
-    ret
-handUp:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec dx
-    cmp dx,110
-    jne handUp
-    ret
-handLeft1:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec cx
-    cmp cx,510
-    jne handLeft1
-    ret
-handLeft2:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec cx
-    cmp cx,465
-    jne handLeft2
-    ret
-handRight2:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    inc cx
-    cmp cx,490
-    jne handRight2
-    ret
-squareRight:
-    mov ah,0ch
-    int 10h
-    inc cx
-    cmp cx,si
-    jne squareRight
-    ret
-squareUp:
-    mov ah,0ch
-    int 10h
-    dec dx
-    cmp dx,di
-    jne squareUp
-    ret
-squareLeft:
-    mov ah,0ch
-    int 10h
-    dec cx
-    cmp cx,si
-    jne squareLeft
-    ret
-squareDown:
-    mov ah,0ch
-    int 10h
-    inc dx
-    cmp dx,di
-    jne squareDown
-    ret
-newSquareRight:
-    call deleteSquare
-    mov al,14
-    add si,5
-    mov cx,si
-    add si,10
-    call squareRight
-    sub di,5
-    call squareUp
-    sub si,10
-    call squareLeft
-    add di,5
-    call squareDown 
-    jmp waitKeyboard
-newSquareLeft:
-    call deleteSquare
-    mov al,14
-    sub si,5
-    mov cx,si
-    add si,10
-    call squareRight
-    sub di,5
-    call squareUp
-    sub si,10
-    call squareLeft
-    add di,5
-    call squareDown
-    jmp waitKeyboard
-newSquareDown:
-    call deleteSquare
-    mov al,14
-    add di,5
-    mov dx,di
-    mov cx,si
-    add si,10
-    call squareRight
-    sub di,5
-    call squareUp
-    sub si,10
-    call squareLeft
-    add di,5
-    call squareDown
-    jmp waitKeyboard
-newSquareUp:
-    call deleteSquare
-    mov al,14
-    sub di,5
-    mov dx,di
-    mov cx,si
-    add si,10
-    call squareRight
-    sub di,5
-    call squareUp
-    sub si,10
-    call squareLeft
-    add di,5
-    call squareDown
-    jmp waitKeyboard
-deleteSquare:
-    mov al,0
-    add si,10
-    call squareRight
-    sub di,5
-    call squareUp
-    sub si,10
-    call squareLeft
-    add di,5
-    call squareDown
-    ret
-gradientPixel:
-    mov al,1
-    cmp si,1
-    je goRightSquare
-    cmp si,2
-    je goDownSquare
-    cmp si,3
-    je goLeftSquare
-    cmp si,4
-    je goUpSquare
-    ret
-incrementColor:
-    mov di,0
-    inc al
-    cmp si,1
-    je goRightSquare
-    cmp si,2
-    je goDownSquare
-    cmp si,3
-    je goLeftSquare
-    cmp si,4
-    je goUpSquare
-goRightSquare:
-    mov si,1
-    mov ah,0ch
-    cmp al,15
-    je gradientPixel
-    int 10h
-    cmp di,5
-    je incrementColor
-    inc di
-    inc cx
-    cmp cx,80
-    jne goRightSquare
-    ret
-goDownSquare:
-    mov si,2
-    mov ah,0ch
-    cmp al,15
-    je gradientPixel
-    int 10h
-    cmp di,5
-    je incrementColor
-    inc di
-    inc dx
-    cmp dx,80
-    jne goDownSquare
-    ret
-goLeftSquare:
-    mov si,3
-    mov ah,0ch
-    cmp al,15
-    je gradientPixel
-    int 10h
-    cmp di,5
-    je incrementColor
-    inc di
-    dec cx
-    cmp cx,40
-    jne goLeftSquare
-    ret
-goUpSquare:
-    mov si,4
-    mov ah,0ch
-    cmp al,15
-    je gradientPixel
-    int 10h
-    cmp di,5
-    je incrementColor
-    inc di
-    dec dx
-    cmp dx,40
-    jne goUpSquare
-    ret
-simpleTriangleDown:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    add dx,2
-    inc cx
-    cmp cx,200
-    cmp dx,120
-    jne simpleTriangleDown
-    ret
-simpleTriangleLeft:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec dx
-    sub cx,2
-    cmp cx,140
-    cmp dx,70
-    jne simpleTriangleLeft
-    ret
-simpleTriangleUp:
-    mov ah,0ch
-    mov al,9
-    int 10h
-    dec dx
-    add cx,2
-    cmp cx,200
-    cmp dx,40
-    jne simpleTriangleUp
-    ret
+        ;set video mode to 640x200
+        mov ah,00h
+        mov al,0eh
+        int 10h
+        ;print a pixel
+        jmp printpixel
+    downObject:
+        mov ah,0ch
+        int 10h
+        inc cx
+        inc dx
+        cmp dx, 120
+        jne downObject
+        ret
+    rightObject:
+        mov ah,0ch
+        int 10h
+        inc cx
+        cmp cx, 320
+        jne rightObject
+        ret
+    upObject:
+        mov ah,0ch
+        int 10h
+        dec dx
+        inc cx
+        cmp dx, 40
+        jne upObject
+        ret
+    leftBitObject:
+        mov ah,0ch
+        int 10h
+        dec cx
+        cmp cx, 370
+        jne leftBitObject
+        ret
+    downBitObject:
+        mov ah,0ch
+        int 10h
+        inc dx
+        dec cx
+        cmp dx, 100
+        jne downBitObject
+        ret
+    leftleftBitObject:
+        mov ah,0ch
+        int 10h
+        dec cx
+        cmp cx, 290
+        jne leftleftBitObject
+        ret
+    upBitObject:
+        mov ah,0ch
+        int 10h
+        dec dx
+        dec cx
+        cmp dx, 40
+        jne upBitObject
+        ret
+    leftLeftLeftBitObject:
+        mov ah,0ch
+        int 10h
+        dec cx
+        cmp cx, 200
+        jne leftLeftLeftBitObject
+        ret
+    logoSquareDown:
+        mov ah,0ch
+        int 10h
+        inc dx
+        cmp dx, 130
+        jne logoSquareDown
+        ret
+    logoSquareRight:
+        mov ah,0ch
+        int 10h
+        inc cx
+        cmp cx, 410
+        jne logoSquareRight
+        ret
+    logoSquareUp:
+        mov ah,0ch
+        int 10h
+        dec dx
+        cmp dx, 30
+        jne logoSquareUp
+        ret
+    logoSquareLeft:
+        mov ah,0ch
+        int 10h
+        dec cx
+        cmp cx, 190
+        jne logoSquareLeft
+        ret
+    clearScreen:
+        mov ah,00h
+        mov al,0eh
+        int 10h
+        jmp continue
+    triangleDown:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        inc dx
+        ;cmp cx,540
+        cmp dx,140
+        jne triangleDown
+        ret
+    triangleLeft:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec cx
+        cmp cx,460
+        jne triangleLeft
+        ret
+    triangleUp:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        dec dx
+        cmp dx,100
+        jne triangleUp
+        ret
+    headRight:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        cmp cx,520
+        jne headRight
+        ret
+    headUp:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec dx
+        cmp dx,80
+        jne headUp
+        ret
+    headLeft:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec cx
+        cmp cx,480
+        jne headLeft
+        ret
+    headDown:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc dx
+        cmp dx,100
+        jne headDown
+        ret
+    eyeUp1:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec dx
+        cmp dx,85
+        jne eyeUp1
+        ret
+    eyeRight1:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        cmp cx,495
+        jne eyeRight1
+        ret
+    eyeDown1:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc dx
+        cmp dx,90
+        jne eyeDown1
+        ret
+    eyeLeft1:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec cx
+        cmp cx,490
+        jne eyeLeft1
+        ret
+    eyeRight2:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        cmp cx,510
+        jne eyeRight2
+        ret
+    eyeLeft2:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec cx
+        cmp cx,505
+        jne eyeLeft2
+        ret
+    footDown:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc dx
+        cmp dx,150
+        jne footDown
+        ret
+    footRight1:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        cmp cx,490
+        jne footRight1
+        ret
+    footRight2:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        cmp cx,530
+        jne footRight2
+        ret
+    footUp:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec dx
+        cmp dx,140
+        jne footUp
+        ret
+    handDown:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc dx
+        cmp dx,115
+        jne handDown
+        ret
+    handRight1:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        cmp cx,535
+        jne handRight1
+        ret
+    handUp:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec dx
+        cmp dx,110
+        jne handUp
+        ret
+    handLeft1:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec cx
+        cmp cx,510
+        jne handLeft1
+        ret
+    handLeft2:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec cx
+        cmp cx,465
+        jne handLeft2
+        ret
+    handRight2:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        inc cx
+        cmp cx,490
+        jne handRight2
+        ret
+    squareRight:
+        mov ah,0ch
+        int 10h
+        inc cx
+        cmp cx,si
+        jne squareRight
+        ret
+    squareUp:
+        mov ah,0ch
+        int 10h
+        dec dx
+        cmp dx,di
+        jne squareUp
+        ret
+    squareLeft:
+        mov ah,0ch
+        int 10h
+        dec cx
+        cmp cx,si
+        jne squareLeft
+        ret
+    squareDown:
+        mov ah,0ch
+        int 10h
+        inc dx
+        cmp dx,di
+        jne squareDown
+        ret
+    newSquareRight:
+        call deleteSquare
+        mov al,14
+        add si,5
+        mov cx,si
+        add si,10
+        call squareRight
+        sub di,5
+        call squareUp
+        sub si,10
+        call squareLeft
+        add di,5
+        call squareDown 
+        jmp waitKeyboard
+    newSquareLeft:
+        call deleteSquare
+        mov al,14
+        sub si,5
+        mov cx,si
+        add si,10
+        call squareRight
+        sub di,5
+        call squareUp
+        sub si,10
+        call squareLeft
+        add di,5
+        call squareDown
+        jmp waitKeyboard
+    newSquareDown:
+        call deleteSquare
+        mov al,14
+        add di,5
+        mov dx,di
+        mov cx,si
+        add si,10
+        call squareRight
+        sub di,5
+        call squareUp
+        sub si,10
+        call squareLeft
+        add di,5
+        call squareDown
+        jmp waitKeyboard
+    newSquareUp:
+        call deleteSquare
+        mov al,14
+        sub di,5
+        mov dx,di
+        mov cx,si
+        add si,10
+        call squareRight
+        sub di,5
+        call squareUp
+        sub si,10
+        call squareLeft
+        add di,5
+        call squareDown
+        jmp waitKeyboard
+    deleteSquare:
+        mov al,0
+        add si,10
+        call squareRight
+        sub di,5
+        call squareUp
+        sub si,10
+        call squareLeft
+        add di,5
+        call squareDown
+        ret
+    gradientPixel:
+        mov al,1
+        cmp si,1
+        je goRightSquare
+        cmp si,2
+        je goDownSquare
+        cmp si,3
+        je goLeftSquare
+        cmp si,4
+        je goUpSquare
+        ret
+    incrementColor:
+        mov di,0
+        inc al
+        cmp si,1
+        je goRightSquare
+        cmp si,2
+        je goDownSquare
+        cmp si,3
+        je goLeftSquare
+        cmp si,4
+        je goUpSquare
+    goRightSquare:
+        mov si,1
+        mov ah,0ch
+        cmp al,15
+        je gradientPixel
+        int 10h
+        cmp di,5
+        je incrementColor
+        inc di
+        inc cx
+        cmp cx,80
+        jne goRightSquare
+        ret
+    goDownSquare:
+        mov si,2
+        mov ah,0ch
+        cmp al,15
+        je gradientPixel
+        int 10h
+        cmp di,5
+        je incrementColor
+        inc di
+        inc dx
+        cmp dx,80
+        jne goDownSquare
+        ret
+    goLeftSquare:
+        mov si,3
+        mov ah,0ch
+        cmp al,15
+        je gradientPixel
+        int 10h
+        cmp di,5
+        je incrementColor
+        inc di
+        dec cx
+        cmp cx,40
+        jne goLeftSquare
+        ret
+    goUpSquare:
+        mov si,4
+        mov ah,0ch
+        cmp al,15
+        je gradientPixel
+        int 10h
+        cmp di,5
+        je incrementColor
+        inc di
+        dec dx
+        cmp dx,40
+        jne goUpSquare
+        ret
+    simpleTriangleDown:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        add dx,2
+        inc cx
+        cmp cx,200
+        cmp dx,120
+        jne simpleTriangleDown
+        ret
+    simpleTriangleLeft:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec dx
+        sub cx,2
+        cmp cx,140
+        cmp dx,70
+        jne simpleTriangleLeft
+        ret
+    simpleTriangleUp:
+        mov ah,0ch
+        mov al,9
+        int 10h
+        dec dx
+        add cx,2
+        cmp cx,200
+        cmp dx,40
+        jne simpleTriangleUp
+        ret
 printpixel:
     ;logo
     mov al,12
@@ -1242,6 +1355,7 @@ newLine: db 0x0d, 0xa, 0
 input: times 64 db 0 
 var1: times 64 db 0 
 var2: times 64 db 0 
+result:  times 64 db 0 
 goodbye: db "Goodbye! Have a nice day.", 0x0d, 0xa, 0
 help_command: db "help", 0
 empty_space: db "",0
@@ -1254,7 +1368,7 @@ ghost_command: db "ghost", 0
 restart_command: db "restart", 0
 math_command: db "math", 0
 help_description0: db " These are the shell commands you can use:", 0x0d, 0xa, 0
-help_description1: db "   Type 'draw' to show pixel images. To return back press 'e'. ", 0x0d, 0xa, 0
+help_description1: db "   Type 'draw' to show pixel images. To return back press 'e'. Press 'space' during logo ", 0x0d, 0xa, 0
 help_description2: db "   Type 'about' for information about the Operating System.", 0x0d, 0xa, 0
 help_description3: db "   Type 'shutdown' to shutdown the Operating System.", 0x0d, 0xa, 0
 help_description4: db "   Type 'clear' to clear the screen.", 0x0d, 0xa, 0
