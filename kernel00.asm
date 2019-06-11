@@ -15,6 +15,16 @@ start:
 	mov si,greetings
 	call printString
 
+    mov ah,04h
+    int  0x1A     ; call service 00 of RTC BIOS interrupt
+    mov [storeTime1],dx
+    mov ah,04h
+    int  0x1A     ; call service 00 of RTC BIOS interrupt
+    mov [storeTime3],cl
+    mov ah,02h
+    int 1ah
+    mov [storeTime2],cx
+
     jmp mainLoop
 ;compare string with help command
 compare_string_SI_BX_HELP:
@@ -451,13 +461,16 @@ ifEqualTwo:
 ifEqualFour:
     mov bp,2
     call printStringMath
-    jmp back1
+    jmp General
 firstVariableKeyboard:
     mov ah,0x0
     int 16h
 
     cmp al,0x0d
     je returnEnter
+
+    cmp al,0x8
+	je backspacePressed
 
     mov ah,0eh
     int 10h
@@ -467,6 +480,7 @@ firstVariableKeyboard:
 
     mov word[var1 + bp],cx
     add bp,2
+    add di,2
     mov cx,0
 
     jmp firstVariableKeyboard
@@ -477,6 +491,9 @@ secondVariableKeyboard:
     cmp al,0x0d
     je returnEnter
 
+    cmp al,0x8
+	je backspacePressed
+
     mov ah,0eh
     int 10h
 
@@ -484,22 +501,32 @@ secondVariableKeyboard:
     mov cx,[var2 + bp]
 
     mov word[var2 + bp],cx
+    add bl,2
     add bp,2
     mov cx,0
 
     jmp secondVariableKeyboard
+chooseOperator:
+    mov ah,00h
+    int 16h
+    cmp ah,2
+    je Addition
+    cmp ah,3
+    je Subtraction
+    cmp ah,4
+    je Multiply
+    cmp ah,5
+    je Division
+    ret
 equalMath:
     ;introduce first variable
     mov si,math_description0
     call printString
 
     mov bp,0
+    mov di,0
+    mov bl,0
     call firstVariableKeyboard
-
-    ;test var 1
-    ; mov bp,0
-    ; mov si, var1
-    ; call printStringDouble
     
     ;new line
     mov si,newLine
@@ -515,45 +542,561 @@ equalMath:
     ;new line
     mov si,newLine
     call printString
+    ;choose operator
+    mov si,math_description3
+    call printString
 
-    ;test var 2
-    ; mov bp,0
-    ; mov si,var2
-    ; call printStringDouble
+    ;new line
+    mov si,newLine
+    call printString
 
+    call chooseOperator
+
+Addition:
+        ;the result
+        mov si,math_description2
+        call printString
+        ;adding
+        mov dx,0
+        mov cx,0
+        ;compare if var1 has one digit typed and var 2 two digits
+        cmp di,2  ;var1
+        je compareOneDigitTwoDigits
+        ;compare if var2 has one digit typed and var 1 two digits
+        cmp bl,2 ;var2
+        je compareTwoDigitsOneDigit
+        back3:
+        ;compare if its adding 8+8 
+        cmp bp,2
+        je oneDigitMath
+        backOneDigitMath:
+        ;compare if addin 23+12
+        cmp bp,4
+        je twoDigitMath
+
+        ;call the function that makes from int ascii
+        call divMath
+        mov bx,0
+        ;print the result
+        mov bp,0
+        mov si,result
+        ;compare to print 1 or 2 digit result
+        cmp cx,2
+        je ifEqualTwo
+        back0:
+        cmp cx,4
+        je ifEqualFour
+        jmp General
+        oneDigitMath:
+        sub word[var1],48
+        sub word[var2],48
+
+        mov dx,[var1]
+        add dx,[var2]
+
+        mov ax,dx
+        mov bp,0
+        mov cx,0
+
+        jmp backOneDigitMath
+    twoDigitMath:
+        mov cx,0
+
+        sub word[var1],48
+        sub word[var2],48
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+
+        mov dx,[var1 + 2]
+        add dx,[var2 + 2]
+
+        cmp dx,9
+        jg callDivMath
+
+        mov [result + 2],dx
+        add word[result + 2],48
+        mov dx,0
+        backFromDivMath:
+        add dx,[var1] 
+        add dx,[var2] 
+        mov word[result],dx
+
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+    callDivMath:
+        mov ax,dx
+        mov bp,0
+        call divMath
+        call addOneDigit
+        jmp backFromDivMath
+    addOneDigit: 
+        mov dx,0
+        mov cx,0
+        mov dx,[result + 2]
+        sub dx,48
+        mov cx,[result + 0]
+        mov word[result + 2], cx
+        ret
+    compareOneDigitTwoDigits:
+        cmp bl,4
+        je oneDigitTwoDigits
+        jmp back3
+    addNewOneDigitTwoDigits:
+        mov dx,0 
+        mov cx,0
+        mov dx,[result + 2] 
+        sub dx,48
+        mov cx,[result + 0] 
+        mov word[result + 2], cx
+        ret
+    callOneDigitTwoDigits:
+        mov ax,dx
+        mov bp,0
+        call divMath
+        call addNewOneDigitTwoDigits
+        jmp backFromCall
+    oneDigitTwoDigits:
+        mov cx,0 
+
+        sub word[var1],48  
+        sub word[var2],48  
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+        
+        mov dx,[var1]
+        add dx,[var2 + 2] 
+        
+        cmp dx,9
+        jg callOneDigitTwoDigits
+
+        mov [result + 2],dx
+        add word[result + 2],48
+        mov dx,0
+        backFromCall:
+        add dx,[var2] 
+        mov word[result],dx
+
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+        ret
+
+    compareTwoDigitsOneDigit:
+        cmp di,4
+        je twoDigitsOneDigit
+        jmp back3
+    addNewTwoDigitsOneDigit:
+        mov dx,0 
+        mov cx,0
+        mov dx,[result + 2] 
+        sub dx,48
+        mov cx,[result + 0] 
+        mov word[result + 2], cx
+        ret
+    callTwoDigitsOneDigits:
+        mov ax,dx
+        mov bp,0
+        call divMath
+        call addNewTwoDigitsOneDigit
+        jmp backFromCall1
+    twoDigitsOneDigit:
+        mov cx,0 
+
+        sub word[var1],48 
+        sub word[var2],48  
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+        
+        mov dx,[var1 + 2]
+        add dx,[var2] 
+        
+        cmp dx,9
+        jg callTwoDigitsOneDigits
+
+        mov [result + 2],dx
+        add word[result + 2],48
+        mov dx,0
+        backFromCall1:
+        add dx,[var1] 
+        mov word[result],dx
+
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+        ret
+
+Subtraction:
     ;the result
     mov si,math_description2
     call printString
 
-    ;conversion from ascii to decimal
-    sub word[var1],48
-    sub word[var2],48
-    ; sub word[var1 + 2],48
-    ; sub word[var2 + 2],48
-    ;adding
-    mov dx,0
-    mov cx,0
-    ; call twoDigitMath
+    ;subtract
+        mov dx,0
+        mov cx,0
+        ;compare if var1 has one digit typed and var 2 two digits
+        cmp di,2  ;var1
+        je ScompareOneDigitTwoDigits
+        ;compare if var2 has one digit typed and var 1 two digits
+        cmp bl,2 ;var2
+        je ScompareTwoDigitsOneDigit
+        Sback3:
+        ;compare if its adding 8+8 
+        cmp bp,2
+        je SoneDigitMath
+        SbackOneDigitMath:
+        ;compare if addin 23+12
+        cmp bp,4
+        je StwoDigitMath
 
-    mov dx,[var1]
-    add dx,[var2]
-    ;store variable in ax
-    mov ax,dx
-    mov bp,0
-    mov cx,0
-    ;call the function that makes from int ascii
-    call divMath
-    mov bx,0
-    ;print the result
-    mov si,result
-    call printStringDouble
-    ;compare to print 1 or 2 digit result
-    cmp cx,2
-    je ifEqualTwo
-    back0:
-    cmp cx,4
-    je ifEqualFour
-    back1:
+        ;call the function that makes from int ascii
+        call divMath
+        mov bx,0
+        ;print the result
+        mov bp,0
+        mov si,result
+        ;compare to print 1 or 2 digit result
+        cmp cx,2
+        je ifEqualTwo
+        Sback0:
+        cmp cx,4
+        je ifEqualFour
+        jmp General
+    SoneDigitMath:
+        sub word[var1],48
+        sub word[var2],48
+
+        mov dx,[var1]
+        sub dx,[var2]
+
+        mov ax,dx
+        mov bp,0
+        mov cx,0
+
+        jmp SbackOneDigitMath
+    StwoDigitMath:
+        mov cx,0
+
+        sub word[var1],48
+        sub word[var2],48
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+
+        mov dx,[var1 + 2]
+        add dx,[var2 + 2]
+
+        cmp dx,9
+        jg ScallDivMath
+
+        mov [result + 2],dx
+        add word[result + 2],48
+        mov dx,0
+        SbackFromDivMath:
+        add dx,[var1] 
+        add dx,[var2] 
+        mov word[result],dx
+
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+    ScallDivMath:
+        mov ax,dx
+        mov bp,0
+        call divMath
+        call SaddOneDigit
+        jmp SbackFromDivMath
+    SaddOneDigit: 
+        mov dx,0
+        mov cx,0
+        mov dx,[result + 2]
+        sub dx,48
+        mov cx,[result + 0]
+        mov word[result + 2], cx
+        ret
+    ScompareOneDigitTwoDigits:
+        cmp bl,4
+        je SoneDigitTwoDigits
+        jmp Sback3
+    SaddNewOneDigitTwoDigits:
+        mov dx,0 
+        mov cx,0
+        mov dx,[result + 2] 
+        sub dx,48
+        mov cx,[result + 0] 
+        mov word[result + 2], cx
+        ret
+    ScallOneDigitTwoDigits:
+        mov ax,dx
+        mov bp,0
+        call divMath
+        call SaddNewOneDigitTwoDigits
+        jmp SbackFromCall
+    SoneDigitTwoDigits:
+        mov cx,0 
+
+        sub word[var1],48  
+        sub word[var2],48  
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+        
+        mov dx,[var1]
+        add dx,[var2 + 2] 
+        
+        cmp dx,9
+        jg ScallOneDigitTwoDigits
+
+        mov [result + 2],dx
+        add word[result + 2],48
+        mov dx,0
+        SbackFromCall:
+        add dx,[var2] 
+        mov word[result],dx
+
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+        ret
+
+    ScompareTwoDigitsOneDigit:
+        cmp di,4
+        je StwoDigitsOneDigit
+        jmp Sback3
+    SaddNewTwoDigitsOneDigit:
+        mov dx,0 
+        mov cx,0
+        mov dx,[result + 2] 
+        sub dx,48
+        mov cx,[result + 0] 
+        mov word[result + 2], cx
+        ret
+    ScallTwoDigitsOneDigits:
+        mov ax,dx
+        mov bp,0
+        call divMath
+        call SaddNewTwoDigitsOneDigit
+        jmp SbackFromCall1
+    StwoDigitsOneDigit:
+        mov cx,0 
+
+        sub word[var1],48 
+        sub word[var2],48  
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+        
+        mov dx,[var1 + 2]
+        add dx,[var2] 
+        
+        cmp dx,9
+        jg ScallTwoDigitsOneDigits
+
+        mov [result + 2],dx
+        add word[result + 2],48
+        mov dx,0
+        SbackFromCall1:
+        add dx,[var1] 
+        mov word[result],dx
+
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+        ret
+
+
+    jmp General
+Multiply:
+    ;the result
+    mov si,math_description2
+    call printString
+
+    ;multiply
+        mov dx,0
+        mov cx,0
+        ;compare if var1 has one digit typed and var 2 two digits
+        cmp di,2  ;var1
+        je McompareOneDigitTwoDigits
+        ;compare if var2 has one digit typed and var 1 two digits
+        cmp bl,2 ;var2
+        je McompareTwoDigitsOneDigit
+        Mback3:
+        ;compare if its adding 8+8 
+        cmp bp,2
+        je MoneDigitMath
+    MbackOneDigitMath:
+        
+        ;call the function that makes from int ascii
+        call divMath
+        mov bx,0
+        ;print the result
+        mov bp,0
+        mov si,result
+        ;compare to print 1 or 2 digit result
+        cmp cx,2
+        je ifEqualTwo
+        Mback0:
+        cmp cx,4
+        je ifEqualFour
+        jmp General
+    MoneDigitMath:
+        sub word[var1],48
+        sub word[var2],48
+
+        mov ax,[var1]
+        mov dx,[var2]
+
+        mul dx
+
+        ; mov ax,dx
+        mov bp,0
+        mov cx,0
+
+        jmp MbackOneDigitMath
+    
+    McompareOneDigitTwoDigits:
+        cmp bl,4
+        je MoneDigitTwoDigits
+        jmp Mback3
+    MaddNewOneDigitTwoDigits:
+        mov dx,0  
+        mov cx,0
+        mov cx,[result + 2] 
+        sub cx,48
+        mov dx,[result + 0]
+        mov word[result + 2], dx
+        mov dx,0
+        ret
+    McallOneDigitTwoDigits:
+        mov bp,0
+        call divMath
+        call MaddNewOneDigitTwoDigits
+        jmp MbackFromCall
+    MoneDigitTwoDigits:
+        mov ax,0
+        mov cx,0 
+
+        sub word[var1],48  
+        sub word[var2],48  
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+        
+        mov ax,[var1]
+        mov dx,[var2 + 2] 
+
+        mul dx
+        
+        cmp ax,9
+        jg McallOneDigitTwoDigits
+
+        mov [result + 2],ax
+        add word[result + 2],48
+        mov ax,0
+        mov cx,0
+    MbackFromCall:
+        mov ax,[var2]
+        mov dx,[var1]
+        mul dx
+        add ax,cx
+        mov word[result],ax
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+        ret
+
+    McompareTwoDigitsOneDigit:
+        cmp di,4
+        je MtwoDigitsOneDigit
+        jmp Mback3
+    MaddNewTwoDigitsOneDigit:
+        mov dx,0 
+        mov cx,0
+        mov cx,[result + 2] 
+        sub cx,48
+        mov dx,[result + 0] 
+        mov word[result + 2], dx
+        ret
+    McallTwoDigitsOneDigits:
+        mov bp,0
+        call divMath
+        call MaddNewTwoDigitsOneDigit
+        jmp MbackFromCall1
+    MtwoDigitsOneDigit:
+        mov cx,0 
+
+        sub word[var1],48 
+        sub word[var2],48  
+        sub word[var1 + 2],48
+        sub word[var2 + 2],48
+        
+        mov ax,[var1 + 2] 
+        mov dx,[var2] 
+        mul dx
+
+        cmp ax,9
+        jg McallTwoDigitsOneDigits
+
+        mov [result + 2],ax
+        add word[result + 2],48
+        mov dx,0
+        mov cx,0
+        MbackFromCall1:
+        mov dx,[var2] 
+        mov ax,[var1]
+        mul dx
+        add ax,cx
+        mov word[result],ax
+
+        add word[result],48
+
+        mov bp,0
+        mov si,result
+        call printStringDouble
+        
+        jmp General
+
+        ret
+
+    jmp General
+Division:
+    ;the result
+    mov si,math_description2
+    call printString
+
+    jmp General
+General:
     mov bx,0
     call clearBuffer
 
@@ -562,15 +1105,6 @@ equalMath:
     call printString
     
     jmp mainLoop
-; twoDigitMath:
-;     mov dx,[var1]
-;     add dx,[var2]
-;     mov word[result],dx
-;     mov dx,[var1 + 2]
-;     add dx,[var2 + 2]
-;     mov word[result + 2],dx
-;     add [result],48
-;     add [result + 2],48
 divMath:
     mov dx,0
     mov bx,10
@@ -650,7 +1184,126 @@ equalAbout:
     mov si, about_description1
     call printString
 
+    call read_and_display_rtc_time
+    
+    
     jmp mainLoop
+read_and_display_rtc_time:
+    mov si,2
+    mov dx,[storeTime1]
+    mov bp,0
+    call print_hex
+
+    mov ah,0eh
+    mov al,47
+    int 10h
+    
+    mov si,1
+    mov dx,[storeTime3]
+    call print_hex
+
+    mov si,alotOfSpace
+    call printString
+
+    mov si,2
+    mov dx,[storeTime2]
+    mov bp,8
+    call print_hex
+
+    mov si,newLine
+    call printString
+    jmp mainLoop
+    
+
+; Prints the value of DX as hex.
+print_hex:
+  pusha             ; save the register values to the stack for later
+
+  mov cx,4          ; Start the counter: we want to print 4 characters
+                    ; 4 bits per char, so we're printing a total of 16 bits
+
+char_loop:
+  dec cx            ; Decrement the counter
+
+  mov ax,dx         ; copy bx into ax so we can mask it for the last chars
+  shr dx,4          ; shift bx 4 bits to the right
+  and ax,0xf        ; mask ah to get the last 4 bits
+
+  mov bx, HEX_OUT   ; set bx to the memory address of our string
+  add bx, 2         ; skip the '0x'
+  add bx, cx        ; add the current counter to the address
+
+  cmp ax,0xa        ; Check to see if it's a letter or number
+  jl set_letter     ; If it's a number, go straight to setting the value
+  add al, 0x27      ; If it's a letter, add 0x27, and plus 0x30 down below
+                    ; ASCII letters start 0x61 for "a" characters after 
+                    ; decimal numbers. We need to cover that distance. 
+  jl set_letter
+
+set_letter:
+  add al, 0x30      ; For and ASCII number, add 0x30
+  mov byte [bx],al  ; Add the value of the byte to the char at bx
+
+  cmp cx,0          ; check the counter, compare with 0
+  je print_hex_done ; if the counter is 0, finish
+  jmp char_loop     ; otherwise, loop again
+
+print_hex_done:
+  mov bx, HEX_OUT   ; print the string pointed to by bx
+  call print_string
+
+  popa              ; pop the initial register values back from the stack
+  ret               ; return the function
+
+HEX_OUT: db '0x0000', 0
+print_string:     ; Push registers onto the stack
+  pusha
+  je string_loop
+
+string_loop:
+    cmp si,1
+    je al4
+    cmp si,2
+    je al2
+    alback:
+    cmp al, 0       ; Compare the value in al to 0 (check for null terminator)
+    jne print_char  ; If it's not null, print the character at al
+                  ; Otherwise the string is done, and the function is ending
+    popa            ; Pop all the registers back onto the stack
+    ret             ; return execution to where we were
+
+print_char:
+    mov ah, 0x0e    ; Linefeed printing
+    int 0x10        ; Print character
+    add bx, 1       ; Shift bx to the next character
+    add bp,1
+    cmp bp,2
+    je displayBar
+    cmp bp,10
+    je display_colon
+    jmp string_loop ; go back to the beginning of our loop
+
+display_colon:
+    mov ah,0eh
+    mov al,58
+    int 10h
+    add bp,1
+    jmp string_loop
+displayBar:
+    cmp si,1
+    je string_loop
+    mov ah,0eh
+    mov al,47
+    int 10h
+    jmp string_loop
+al4:
+    mov al, [bx + 4]    ; Set al to the value at bx
+    jmp alback
+al2:
+    mov al, [bx + 2]    ; Set al to the value at bx
+    jmp alback
+
+    
 ;if draw typed
 equalDraw:
     jmp draw
@@ -1355,10 +2008,15 @@ newLine: db 0x0d, 0xa, 0
 input: times 64 db 0 
 var1: times 64 db 0 
 var2: times 64 db 0 
+time: times 64 db 0
 result:  times 64 db 0 
+storeTime1: times 10 db 0
+storeTime2: times 10 db 0
+storeTime3: times 10 db 0
 goodbye: db "Goodbye! Have a nice day.", 0x0d, 0xa, 0
 help_command: db "help", 0
 empty_space: db "",0
+alotOfSpace: db "  ", 0
 shutdown_command: db "shutdown", 0
 draw_command: db "draw", 0
 about_command: db "about", 0
@@ -1387,6 +2045,7 @@ restart_description: db "The OS will now restart. Press 'y' to continue and 'n' 
 math_description0: db "Introduce the first variable", 0x0d, 0xa, 0
 math_description1: db "Introduce the second variable", 0x0d, 0xa, 0
 math_description2: db "The result is ", 0x0d, 0xa, 0
+math_description3: db "Choose the operation 1.Add 2.Subtract 3.Multiply 4.Divide"
 
 
 
