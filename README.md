@@ -12,9 +12,17 @@ sudo apt-get install nasm
 4. Create a Virtual Machine with type Other and version DOS.
 5. Compile the code in terminal.
 ```
-nasm -f bin kernel.asm -o kernel.bin
+nasm -f bin kernel00.asm -o kernel00.bin
 nasm -f bin boot.asm -o boot.bin
-cat boot.bin kernel.bin > disk.img
+date > date.bin
+printf "Time and Date:" > text.bin
+cat text.bin date.bin > about.bin
+truncate -s 205312 boot.bin
+cat boot.bin boot.bin > boot1.bin
+truncate -s 205824 boot1.bin
+cat boot1.bin about.bin > file.bin
+truncate -s 206336 file.bin
+cat file.bin kernel00.bin > disk.img
 truncate -s 1474560 disk.img
 ```
 6. Choose floppy image disk.img.
