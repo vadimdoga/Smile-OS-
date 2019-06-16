@@ -15,7 +15,7 @@ load_boot:
 	mov bx, LOADING_BOOT_MSG
 	call print_string
 	mov bx, 0x1000
-	mov dh, 15 
+	mov dh, 15
 	mov dl, [BOOT_DRIVE]
 	call disk_read
 	popa
@@ -39,9 +39,9 @@ disk_read:
 
 	mov ah, 0x02
 	mov al, dh
-	mov ch, 0x00
-	mov dh, 0x00
-	mov cl, 0x02
+	mov ch, 11
+	mov dh, 0
+	mov cl, 8
 	int 0x13
 
 	jc disk_read_error
@@ -87,3 +87,8 @@ DISK_READ_ERROR_MSG: db "Disk Error", 0
 
 times 510 - ($ - $$) db 0
 dw 0xAA55
+; times 510 - ($ - $$) db 0
+; dw 0xAA55
+; db 0x55 ;byte 511 = 0x55
+; db 0xAA ;byte 512 = 0xAA
+; times 205,312 - ($ - $$) db 0

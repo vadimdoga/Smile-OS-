@@ -24,8 +24,114 @@ start:
     mov ah,02h
     int 1ah
     mov [storeTime2],cx
+    mov [storeTime4],dh
 
     jmp mainLoop
+compare_string_SI_BX_WRITE:
+	push si
+	push bx
+	push ax
+compareWrite:
+	mov ah,[bx]
+	cmp [si],ah
+	jne notEqual
+
+	cmp byte [si],0
+	je firstZeroWrite
+
+	inc si
+	inc bx
+
+	jmp compareWrite
+firstZeroWrite:
+	cmp byte [bx],0
+	jne notEqual
+
+	mov cx,12
+
+	pop si
+	pop bx
+	pop ax
+	ret
+compare_string_SI_BX_TIME:
+	push si
+	push bx
+	push ax
+compareTime:
+	mov ah,[bx]
+	cmp [si],ah
+	jne notEqual
+
+	cmp byte [si],0
+	je firstZeroTime
+
+	inc si
+	inc bx
+
+	jmp compareTime
+firstZeroTime:
+	cmp byte [bx],0
+	jne notEqual
+
+	mov cx,13
+
+	pop si
+	pop bx
+	pop ax
+	ret
+compare_string_SI_BX_READ:
+	push si
+	push bx
+	push ax
+compareRead:
+	mov ah,[bx]
+	cmp [si],ah
+	jne notEqual
+
+	cmp byte [si],0
+	je firstZeroRead
+
+	inc si
+	inc bx
+
+	jmp compareRead
+firstZeroRead:
+	cmp byte [bx],0
+	jne notEqual
+
+	mov cx,10
+
+	pop si
+	pop bx
+	pop ax
+	ret
+
+compare_string_SI_BX_ASCII:
+	push si
+	push bx
+	push ax
+compareAscii:
+	mov ah,[bx]
+	cmp [si],ah
+	jne notEqual
+
+	cmp byte [si],0
+	je firstZeroAscii
+
+	inc si
+	inc bx
+
+	jmp compareAscii
+firstZeroAscii:
+	cmp byte [bx],0
+	jne notEqual
+
+	mov cx,11
+
+	pop si
+	pop bx
+	pop ax
+	ret
 ;compare string with help command
 compare_string_SI_BX_HELP:
 	push si
@@ -414,6 +520,38 @@ enterPressed:
     cmp cx,9
     je equalMath
 
+    ;read command
+    mov si,read_command
+    mov bx,input
+    call compare_string_SI_BX_READ
+    ;compare if math was written
+    cmp cx,10
+    je equalRead
+
+    ;ascii command
+    mov si,ascii_command
+    mov bx,input
+    call compare_string_SI_BX_ASCII
+    ;compare if math was written
+    cmp cx,11
+    je equalAscii
+    
+    ;write command
+    mov si,write_command
+    mov bx,input
+    call compare_string_SI_BX_WRITE
+    ;compare if math was written
+    cmp cx,12
+    je equalWrite
+
+    ;time command
+    mov si,time_command
+    mov bx,input
+    call compare_string_SI_BX_TIME
+    ;compare if time was written
+    cmp cx,13
+    je equalTime
+
 	jmp equalNothing
 
 ;if math typed
@@ -796,43 +934,36 @@ Subtraction:
         sub word[var2],48
         sub word[var1 + 2],48
         sub word[var2 + 2],48
-
-        mov dx,[var1 + 2]
-        add dx,[var2 + 2]
-
-        cmp dx,9
-        jg ScallDivMath
-
-        mov [result + 2],dx
-        add word[result + 2],48
-        mov dx,0
-        SbackFromDivMath:
-        add dx,[var1] 
-        add dx,[var2] 
-        mov word[result],dx
-
-        add word[result],48
-
-        mov bp,0
-        mov si,result
-        call printStringDouble
         
-        jmp General
 
-    ScallDivMath:
-        mov ax,dx
-        mov bp,0
+        mov dx,[var1]
+        mov word[stored_number],dx
+        mov dx,[var1 + 2]
+        mov word[stored_number + 2],dx
+        call numberFoo
+        mov word[var1 + 2],0
+        mov word[var1],ax
+
+        mov dx,[var2]
+        mov word[stored_number],dx
+        mov dx,[var2 + 2]
+        mov word[stored_number + 2],dx
+        call numberFoo
+        mov word[var2 + 2],0
+        mov word[var2],ax
+
+        mov ax,[var1]
+        sub ax,[var2]
         call divMath
-        call SaddOneDigit
-        jmp SbackFromDivMath
-    SaddOneDigit: 
+
+        mov si,result
+        call  printStringDouble
+        
         mov dx,0
-        mov cx,0
-        mov dx,[result + 2]
-        sub dx,48
-        mov cx,[result + 0]
-        mov word[result + 2], cx
-        ret
+        jmp mainLoop
+equalOne:
+    mov dx,10
+    ; jmp backOne
     ScompareOneDigitTwoDigits:
         cmp bl,4
         je SoneDigitTwoDigits
@@ -1176,16 +1307,30 @@ equalClear:
     int 10h
 
     jmp mainLoop
+;if time typed
+equalTime:
+    call read_and_display_rtc_time
+    jmp mainLoop
 ;if about typed
 equalAbout:
+
     mov si,about_description0
     call printString
-
+    mov si,0
     mov si, about_description1
     call printString
 
-    call read_and_display_rtc_time
-    
+    mov ah, 0x02
+	mov al, 1
+	mov ch, 11
+	mov dh, 0
+	mov cl, 7
+    mov bx,bla_command_1
+	int 0x13
+
+    call print_string_bx
+
+    ; call read_and_display_rtc_time
     
     jmp mainLoop
 read_and_display_rtc_time:
@@ -1208,6 +1353,14 @@ read_and_display_rtc_time:
     mov si,2
     mov dx,[storeTime2]
     mov bp,8
+    call print_hex
+
+    mov ah,0eh
+    mov al,58
+    int 10h
+
+    mov si,1
+    mov dx,[storeTime4]
     call print_hex
 
     mov si,newLine
@@ -1284,6 +1437,8 @@ print_char:
     jmp string_loop ; go back to the beginning of our loop
 
 display_colon:
+    cmp si,1
+    je string_loop
     mov ah,0eh
     mov al,58
     int 10h
@@ -1341,6 +1496,21 @@ equalHelp:
 
     mov si, help_description6
     call printString
+    
+    mov si, help_description7
+    call printString
+
+    mov si, help_description8
+    call printString
+
+    mov si, help_description9
+    call printString
+
+    mov si, help_description10
+    call printString
+
+    mov si, help_description11
+    call printString
 
     jmp mainLoop
 ;if no valid command written
@@ -1348,6 +1518,369 @@ equalNothing:
     ; mov bx,0
 	mov si, wrong_command
     call printString
+
+    jmp mainLoop
+number_of_sectors_processing:
+    mov ah,0x0
+    int 16h
+
+    cmp al,0x0d
+    je returnEnter
+
+    cmp al,0x8
+	je backspacePressed
+
+    mov ah,0eh
+    int 10h
+
+    mov [variable_processing + bx],al
+    mov cx,[variable_processing + bx]
+
+    mov word[number_of_sectors + bx],cx
+    add bx,2
+
+    jmp number_of_sectors_processing
+cylinder_number_processing:
+    mov ah,0x0
+    int 16h
+
+    cmp al,0x0d
+    je returnEnter
+
+    cmp al,0x8
+	je backspacePressed
+
+    mov ah,0eh
+    int 10h
+    
+    mov [variable_processing + bx],al
+    mov cx,[variable_processing + bx]
+
+    mov word[cylinder_number + bx],cx
+    add bx,2
+
+    jmp cylinder_number_processing
+head_number_processing:
+    mov ah,0x0
+    int 16h
+
+    cmp al,0x0d
+    je returnEnter
+
+    cmp al,0x8
+	je backspacePressed
+
+    mov ah,0eh
+    int 10h
+
+    mov [variable_processing],al
+    mov cx,[variable_processing]
+
+    mov word[head_number],cx
+
+    jmp sector_number_processing
+sector_number_processing:
+    mov ah,0x0
+    int 16h
+
+    cmp al,0x0d
+    je returnEnter
+
+    cmp al,0x8
+	je backspacePressed
+
+    mov ah,0eh
+    int 10h
+
+    mov [variable_processing + bx],al
+    mov cx,[variable_processing + bx]
+
+    mov word[sector_number + bx],cx
+    add bx,2
+
+    jmp sector_number_processing
+
+number_sectors_two_digit:
+    sub word[number_of_sectors],48
+    sub word[number_of_sectors + 2],48
+
+    mov bx,0
+    mov bx,[number_of_sectors]
+    mov word[stored_number],bx
+    mov bx,0
+    mov bx,[number_of_sectors + 2]
+    mov word[stored_number + 2],bx
+    call numberFoo
+    mov word[number_of_sectors],ax
+    add ax,48
+    jmp back_number_sector
+cylinder_number_two_digit:
+    sub word[cylinder_number],48
+    sub word[cylinder_number + 2],48
+
+    mov bx,0
+    mov bx,[cylinder_number]
+    mov word[stored_number],bx
+    mov bx,0
+    mov bx,[cylinder_number + 2]
+    mov word[stored_number + 2],bx
+    call numberFoo
+    mov word[cylinder_number],ax
+    add ax,48
+    jmp back_cylinder_number_sector
+sector_number_two_digit:
+    sub word[sector_number],48
+    sub word[sector_number + 2],48
+
+    mov bx,0
+    mov bx,[sector_number]
+    mov word[stored_number],bx
+    mov bx,0
+    mov bx,[sector_number + 2]
+    mov word[stored_number + 2],bx
+    call numberFoo
+    mov word[sector_number],ax
+    add ax,48
+    jmp back_sector_number
+equalRead:
+    ;number of sectors
+    mov bx, 0
+    mov si, number_of_sectors_text
+    call printString
+    
+    mov bx, 0
+    call number_of_sectors_processing
+    cmp bx, 4
+    je number_sectors_two_digit
+    back_number_sector:
+
+    mov si, newLine
+    call printString
+
+    ;cylinder number
+    mov bx, 0
+    mov si, cylinder_number_text
+    call printString
+    
+    mov bx, 0
+    call cylinder_number_processing
+    cmp bx, 4
+    je cylinder_number_two_digit
+   
+    back_cylinder_number_sector:
+
+    mov si, newLine
+    call printString
+
+    ;head number
+    mov bx, 0
+    mov si, sector_number_text
+    call printString
+    
+    mov bx, 0
+    call sector_number_processing
+    
+
+    mov si, newLine
+    call printString
+
+    ;sector number
+    mov bx, 0
+    mov si, head_number_text
+    call printString
+    
+    mov bx, 0
+    call head_number_processing
+    cmp bx, 4
+    je sector_number_two_digit
+    back_sector_number:
+    
+
+    mov si, newLine
+    call printString
+
+    sub word[number_of_sectors],48
+    sub word[cylinder_number],48
+    sub word[sector_number],48
+    sub word[head_number],48
+
+
+    mov ah, 02h
+    mov al, [number_of_sectors]          ;1  
+    mov ch, [cylinder_number]       ;0x06 12
+    mov dh, [head_number]       ;0x00 0       1 cifra
+    mov cl, [sector_number]        ;0x06 
+    mov bx, bla_command_1
+    int 13h
+
+    call print_string_bx
+
+
+    jmp mainLoop
+numberFoo:
+    mov bx,[stored_number] 
+    mov ax,10
+    mov cx,[stored_number]
+    mul cx
+
+    mov [stored_number],ax
+
+    mov ax,[stored_number + 2]
+    add word[stored_number],ax
+
+    mov word[stored_number + 2],0
+ 
+    add word[stored_number],48
+    mov ax,[stored_number]
+
+    ret
+print_string_bx:
+	pusha
+
+	.loop:
+	mov al, [bx]
+	cmp al, 0
+	je .ret
+	mov ah, 0x0E
+	int 0x10
+	inc bx
+	jmp .loop
+
+	.ret:
+	mov ah, 0x0E
+	mov al, 0x0A
+	int 0x10
+	mov al, 0x0D
+	int 0x10
+
+	popa
+	ret
+write_number_sectors_two_digit:
+    sub word[number_of_sectors],48
+    sub word[number_of_sectors + 2],48
+
+    mov bx,0
+    mov bx,[number_of_sectors]
+    mov word[stored_number],bx
+    mov bx,0
+    mov bx,[number_of_sectors + 2]
+    mov word[stored_number + 2],bx
+    call numberFoo
+    mov word[number_of_sectors],ax
+    add ax,48
+    jmp write_back_number_sector
+write_cylinder_number_two_digit:
+    sub word[cylinder_number],48
+    sub word[cylinder_number + 2],48
+
+    mov bx,0
+    mov bx,[cylinder_number]
+    mov word[stored_number],bx
+    mov bx,0
+    mov bx,[cylinder_number + 2]
+    mov word[stored_number + 2],bx
+    call numberFoo
+    mov word[cylinder_number],ax
+    add ax,48
+    jmp write_back_cylinder_number_sector
+write_sector_number_two_digit:
+    sub word[sector_number],48
+    sub word[sector_number + 2],48
+
+    mov bx,0
+    mov bx,[sector_number]
+    mov word[stored_number],bx
+    mov bx,0
+    mov bx,[sector_number + 2]
+    mov word[stored_number + 2],bx
+    call numberFoo
+    mov word[sector_number],ax
+    add ax,48
+    jmp write_back_sector_number
+equalWrite:
+    ;number of sectors
+    mov bx, 0
+    mov si, number_of_sectors_text
+    call printString
+    
+    mov bx, 0
+    call number_of_sectors_processing
+    cmp bx, 4
+    je write_number_sectors_two_digit
+    write_back_number_sector:
+
+    mov si, newLine
+    call printString
+
+    ;cylinder number
+    mov bx, 0
+    mov si, cylinder_number_text
+    call printString
+    
+    mov bx, 0
+    call cylinder_number_processing
+    cmp bx, 4
+    je write_cylinder_number_two_digit
+   
+    write_back_cylinder_number_sector:
+
+    mov si, newLine
+    call printString
+
+    ;sector number
+    mov bx, 0
+    mov si, sector_number_text
+    call printString
+    
+    mov bx, 0
+    call sector_number_processing
+    
+
+    mov si, newLine
+    call printString
+
+    ;head number
+    mov bx, 0
+    mov si, head_number_text
+    call printString
+    
+    mov bx, 0
+    call head_number_processing
+    cmp bx, 4
+    je write_sector_number_two_digit
+    write_back_sector_number:
+    
+    mov si, newLine
+    call printString
+
+    sub word[number_of_sectors],48
+    sub word[cylinder_number],48
+    sub word[sector_number],48
+    sub word[head_number],48
+
+    mov ah, 0x03
+    mov al, [number_of_sectors]
+    mov ch, [cylinder_number]
+    mov dh, [head_number]
+    mov cl, [sector_number]
+    mov bx, bla_command
+    int 0x13
+
+    jmp mainLoop
+equalAscii:
+    mov word [contor], 0
+	printareAscii:
+	mov al, byte [contor]
+	mov ah, 0eh
+	int 10h
+	mov ah, 0eh
+	mov al, ' ' 
+	int 10h
+	inc word [contor]
+	cmp word [contor], 254
+	jle printareAscii
+	mov si,newLine
+	call printString
 
     jmp mainLoop
 ;backspace functionality
@@ -2013,6 +2546,21 @@ result:  times 64 db 0
 storeTime1: times 10 db 0
 storeTime2: times 10 db 0
 storeTime3: times 10 db 0
+storeTime4: times 10 db 0
+variable_processing: times 10 db 0
+number_of_sectors_text: db "Type number of sectors: ", 0x0d, 0xa, 0
+number_of_sectors: times 20 db 0
+cylinder_number_text: db "Type cylinder number: ", 0x0d, 0xa, 0
+cylinder_number: times 20 db 0
+sector_number_text: db "Type sector number: ", 0x0d, 0xa, 0
+sector_number: times 20 db 0
+stored_number: times 20 db 0
+head_number_text: db "Type head number: ", 0x0d, 0xa, 0
+head_number: times 20 db 0
+drive_number_text: db "Type drive number: ", 0x0d, 0xa, 0
+drive_number: times 20 db 0
+read_failure_str: db 'Boot disk read failure!', 13, 10, 0
+contor: db 0
 goodbye: db "Goodbye! Have a nice day.", 0x0d, 0xa, 0
 help_command: db "help", 0
 empty_space: db "",0
@@ -2023,8 +2571,14 @@ about_command: db "about", 0
 wrong_command: db "Wrong command!", 0x0d, 0xa, 0
 clear_command: db "clear", 0
 ghost_command: db "ghost", 0
+time_command: db "time", 0
 restart_command: db "restart", 0
+read_command: db "read",0
+write_command: db "write",0
+ascii_command: db "ascii",0
 math_command: db "math", 0
+bla_command: db "babla",0
+bla_command_1:db "",0
 help_description0: db " These are the shell commands you can use:", 0x0d, 0xa, 0
 help_description1: db "   Type 'draw' to show pixel images. To return back press 'e'. Press 'space' during logo ", 0x0d, 0xa, 0
 help_description2: db "   Type 'about' for information about the Operating System.", 0x0d, 0xa, 0
@@ -2032,8 +2586,13 @@ help_description3: db "   Type 'shutdown' to shutdown the Operating System.", 0x
 help_description4: db "   Type 'clear' to clear the screen.", 0x0d, 0xa, 0
 help_description5: db "   Type 'ghost' to see a ghost on the screen.", 0x0d, 0xa, 0
 help_description6: db "   Type 'restart' to restart the Operating System.", 0x0d, 0xa, 0
+help_description7: db "   Type 'ascii' to see ascii.", 0x0d, 0xa, 0
+help_description8: db "   Type 'read' to read a floppy", 0x0d, 0xa, 0
+help_description9: db "   Type 'write' to write to floppy", 0x0d, 0xa, 0
+help_description10: db "   Type 'math' for math calculation. Working only add,multiply", 0x0d, 0xa, 0
+help_description11: db "   Type 'time' to see the actual time", 0x0d, 0xa, 0
 about_description0: db "Codename: :) Version 0.1", 0x0d, 0xa, 0
-about_description1: db "Hi! My name is Vadim and this is my OS. If you find bugs please contact me.     Thank you!", 0x0d, 0xa, 0
+about_description1: db "Hi! My name is Vadim Doga from FAF-171 and this is my OS. If you find bugs please contact me.     Thank you!", 0x0d, 0xa, 0
 ghost_description0: db " This is a ghost! Mhuuuuu! ", 0x0d, 0xa, 0
 ghost_description1: db "        _________", 0x0d, 0xa, 0
 ghost_description2: db "       (  O   o )", 0x0d, 0xa, 0
